@@ -21,6 +21,11 @@ FLUTTER_EXPORT
 - (instancetype)initWithPrecompiledDartBundle:(NSBundle*)bundle NS_DESIGNATED_INITIALIZER;
 
 /**
+ * Initializes with a specific set of Flutter Assets.
+ */
+- (instancetype)initWithFlutterAssetsURL:(NSURL*)flutterAssetsURL NS_DESIGNATED_INITIALIZER;
+
+/**
  * Initializes with a specific set of Flutter Assets, with a specified location of
  * main() and Dart packages.
  */
