@@ -30,25 +30,25 @@ task:
   gclient_sync_again_script: |
     cd $ENGINE_PATH/src
     gclient sync
-  # compile_ios_debug_script: |
-  #   cd $ENGINE_PATH/src
-  #   mkdir -p target/ios_debug
-  #   ./flutter/tools/gn --ios
-  #   ninja -C out/ios_debug
-  #   cp -Rf out/ios_debug/Flutter.framework target/ios_debug/Flutter.framework
-  #   rm -rf out/ios_debug
-  # compile_ios_debug_sim_script: |
-  #   cd $ENGINE_PATH/src
-  #   mkdir -p target/ios_debug_sim
-  #   ./flutter/tools/gn --ios --simulator
-  #   ninja -C out/ios_debug_sim
-  #   cp -Rf out/ios_debug_sim/Flutter.framework target/ios_debug_sim/Flutter.framework
-  #   rm -rf out/ios_debug_sim
-  # lipo_framework_script: |
-  #   cd $ENGINE_PATH/src
-  #   mkdir -p target/ios_debug_all
-  #   cp -Rf target/ios_debug/Flutter.framework target/ios_debug_all/Flutter.framework
-  #   lipo -create target/ios_debug/Flutter.framework/Flutter target/ios_debug_sim/Flutter.framework/Flutter -output target/ios_debug_all/Flutter.framework/Flutter
-  #   lipo -info target/ios_debug_all/Flutter.framework/Flutter
+  compile_ios_debug_script: |
+    cd $ENGINE_PATH/src
+    mkdir -p target/ios_debug
+    ./flutter/tools/gn --ios
+    ninja -C out/ios_debug
+    cp -Rf out/ios_debug/Flutter.framework target/ios_debug/Flutter.framework
+    rm -rf out/ios_debug
+  compile_ios_debug_sim_script: |
+    cd $ENGINE_PATH/src
+    mkdir -p target/ios_debug_sim
+    ./flutter/tools/gn --ios --simulator
+    ninja -C out/ios_debug_sim
+    cp -Rf out/ios_debug_sim/Flutter.framework target/ios_debug_sim/Flutter.framework
+    rm -rf out/ios_debug_sim
+  lipo_framework_script: |
+    cd $ENGINE_PATH/src
+    mkdir -p target/ios_debug_all
+    cp -Rf target/ios_debug/Flutter.framework target/ios_debug_all/Flutter.framework
+    lipo -create target/ios_debug/Flutter.framework/Flutter target/ios_debug_sim/Flutter.framework/Flutter -output target/ios_debug_all/Flutter.framework/Flutter
+    lipo -info target/ios_debug_all/Flutter.framework/Flutter
   deploy_framework_script: |
     ./hot_update_ci/deploy_framework.sh
