@@ -15,21 +15,21 @@ task:
     git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git $DEPOT_TOOLS
   gclient_sync_script: |
     mkdir -p $ENGINE_PATH/src
-    echo 'solutions = [{"managed": False,"name": "src/flutter","url": "https://github.com/amisare/engine.git","deps_file": "DEPS", "custom_vars": {"download_android_deps" : False, "download_windows_deps" : False,},},]' > $ENGINE_PATH/.gclient
+    echo 'solutions = [{"managed": False,"name": "src/flutter","url": "https://github.com/FlutterPrograms/EngineHotUpdate.git","deps_file": "DEPS", "custom_vars": {"download_android_deps" : False, "download_windows_deps" : False,},},]' > $ENGINE_PATH/.gclient
     cd $ENGINE_PATH/src
     rm -rf flutter
     rm -rf out && rm -rf target
     # mv $CIRRUS_WORKING_DIR flutter
-    # gclient sync
-  # switch_branch_script: |
-  #   cd $ENGINE_PATH/src/flutter
-  #   git remote -v
-  #   git branch -a
-  #   git checkout -b future_hot_update_on_flutter_v1.0.0 origin/future_hot_update_on_flutter_v1.0.0
-  #   git branch -a
-  # gclient_sync_again_script: |
-  #   cd $ENGINE_PATH/src
-  #   gclient sync
+    gclient sync
+  switch_branch_script: |
+    cd $ENGINE_PATH/src/flutter
+    git remote -v
+    git branch -a
+    git checkout -b $CIRRUS_BASE_BRANCH origin/$CIRRUS_BASE_BRANC
+    git branch -a
+  gclient_sync_again_script: |
+    cd $ENGINE_PATH/src
+    gclient sync
   # compile_ios_debug_script: |
   #   cd $ENGINE_PATH/src
   #   mkdir -p target/ios_debug
