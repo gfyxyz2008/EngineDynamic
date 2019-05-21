@@ -19,18 +19,17 @@ task:
     cd $ENGINE_PATH/src
     rm -rf flutter
     rm -rf out && rm -rf target
-    echo "$CIRRUS_BASE_BRANCH"
-  #   # mv $CIRRUS_WORKING_DIR flutter
-  #   gclient sync
-  # switch_branch_script: |
-  #   cd $ENGINE_PATH/src/flutter
-  #   git remote -v
-  #   git branch -a
-  #   git checkout -b $CIRRUS_BASE_BRANCH origin/$CIRRUS_BASE_BRANC
-  #   git branch -a
-  # gclient_sync_again_script: |
-  #   cd $ENGINE_PATH/src
-  #   gclient sync
+    # mv $CIRRUS_WORKING_DIR flutter
+    gclient sync
+  switch_branch_script: |
+    cd $ENGINE_PATH/src/flutter
+    git remote -v
+    git branch -a
+    git checkout -b $CIRRUS_BRANCH origin/$CIRRUS_BRANCH
+    git branch -a
+  gclient_sync_again_script: |
+    cd $ENGINE_PATH/src
+    gclient sync
   # compile_ios_debug_script: |
   #   cd $ENGINE_PATH/src
   #   mkdir -p target/ios_debug
