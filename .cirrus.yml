@@ -1,48 +1,54 @@
-gcp_credentials: ENCRYPTED[987a78af29b91ce8489594c9ab3fec21845bbe5ba68294b8f6def3cf0d380830f06687a89ea69c87344c5ade369700fe]
 
-gke_container:
- image: gcr.io/flutter-cirrus/build-engine-image:latest
- cluster_name: build-32-cluster
- zone: us-central1-a
- namespace: default
- cpu: 30 # can't use all 30-cores; system pods needs cores too
- memory: 100Gb # similarly, can't use all 100Gb memory
 
 task:
+  name: build_ios
+  use_compute_credits: $CIRRUS_USER_COLLABORATOR == 'true'
+  osx_instance:
+    image: high-sierra-xcode-9.4.1
   env:
     CIRRUS_WORKING_DIR: "/tmp/github_repo"
-
-  replace_engine_script: |
+    ENGINE_PATH: "/tmp/engine"
+    DEPOT_TOOLS: "/tmp/depot_tools"
+    PATH: "$DEPOT_TOOLS:$PATH"
+    DEPLOY_TOKEN: ENCRYPTED[1d19ee8e282568a1033a58c8291da7764a2a23f9eb5dd4e570a57b2def24341448156cd77d88ac9fc5fa7f0535400c46]
+  depot_tools_script:
+    git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git $DEPOT_TOOLS
+  gclient_sync_script: |
+    mkdir -p $ENGINE_PATH/src
+    echo 'solutions = [{"managed": False,"name": "src/flutter","url": "https://github.com/FlutterPrograms/EngineHotUpdate.git","deps_file": "DEPS", "custom_vars": {"download_android_deps" : False, "download_windows_deps" : False,},},]' > $ENGINE_PATH/.gclient
     cd $ENGINE_PATH/src
-    rm -r flutter
-    mv $CIRRUS_WORKING_DIR flutter
+    rm -rf flutter
+    rm -rf out && rm -rf target
+    # mv $CIRRUS_WORKING_DIR flutter
     gclient sync
-
-  matrix:
-    - name: build_and_test_host
-      compile_host_script: |
-        cd $ENGINE_PATH/src
-        ./flutter/tools/gn --unoptimized
-        ninja -C out/host_debug_unopt
-      test_host_script: cd $ENGINE_PATH/src && ./flutter/testing/run_tests.sh
-    - name: build_android
-      compile_host_script: |
-        cd $ENGINE_PATH/src
-        ./flutter/tools/gn --android --unoptimized
-        ninja -C out/android_debug_unopt
-
-format_and_dart_test_task:
-  container:
-    image: gcr.io/flutter-cirrus/build-engine-image:latest
-
-  env:
-    CIRRUS_WORKING_DIR: "/tmp/github_repo"
-
-  replace_engine_script: |
+  switch_branch_script: |
+    cd $ENGINE_PATH/src/flutter
+    git remote -v
+    git branch -a
+    git checkout -b $CIRRUS_BRANCH origin/$CIRRUS_BRANCH
+    git branch -a
+  gclient_sync_again_script: |
     cd $ENGINE_PATH/src
-    rm -r flutter
-    cp $CIRRUS_WORKING_DIR -r ./flutter
     gclient sync
-
-  format_script: cd $ENGINE_PATH/src/flutter && ./ci/format.sh
-  build_script: cd $ENGINE_PATH/src/flutter && ./ci/build.sh
+  compile_ios_debug_script: |
+    cd $ENGINE_PATH/src
+    mkdir -p target/ios_debug
+    ./flutter/tools/gn --ios
+    ninja -C out/ios_debug
+    cp -Rf out/ios_debug/Flutter.framework target/ios_debug/Flutter.framework
+    rm -rf out/ios_debug
+  compile_ios_debug_sim_script: |
+    cd $ENGINE_PATH/src
+    mkdir -p target/ios_debug_sim
+    ./flutter/tools/gn --ios --simulator
+    ninja -C out/ios_debug_sim
+    cp -Rf out/ios_debug_sim/Flutter.framework target/ios_debug_sim/Flutter.framework
+    rm -rf out/ios_debug_sim
+  lipo_framework_script: |
+    cd $ENGINE_PATH/src
+    mkdir -p target/ios_debug_all
+    cp -Rf target/ios_debug/Flutter.framework target/ios_debug_all/Flutter.framework
+    lipo -create target/ios_debug/Flutter.framework/Flutter target/ios_debug_sim/Flutter.framework/Flutter -output target/ios_debug_all/Flutter.framework/Flutter
+    lipo -info target/ios_debug_all/Flutter.framework/Flutter
+  deploy_framework_script: |
+    ./hot_update_ci/deploy_framework.sh
