@@ -6,9 +6,9 @@ if [[ "$CIRRUS_TAG" == "" ]]; then
 fi
 
 GIT_DEPLOY_REPO="deploy_repo"
-GIT_FRAMEWORK_PATH="$GIT_DEPLOY_REPO/HotUpdate/$CIRRUS_TAG/iOS"
+GIT_FRAMEWORK_PATH="$GIT_DEPLOY_REPO/EngineDynamic/$CIRRUS_TAG/iOS"
 
-cd $ENGINE_PATH/src 
+cd $ENGINE_PATH/src
 rm -rf deploy_repo
 git clone https://github.com/FlutterPrograms/EngineRepo.git $GIT_DEPLOY_REPO
 rm -rf $GIT_FRAMEWORK_PATH && mkdir -p $GIT_FRAMEWORK_PATH
