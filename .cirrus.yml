@@ -10,7 +10,7 @@ task:
     ENGINE_PATH: "/tmp/engine"
     DEPOT_TOOLS: "/tmp/depot_tools"
     PATH: "$DEPOT_TOOLS:$PATH"
-    DEPLOY_TOKEN: ENCRYPTED[1d19ee8e282568a1033a58c8291da7764a2a23f9eb5dd4e570a57b2def24341448156cd77d88ac9fc5fa7f0535400c46]
+    DEPLOY_TOKEN: ENCRYPTED[5359c00cb515791954226adbc909f69ad81739962c81c175ce79323a6db20291b3dd7476178704e12355b660668c2b8d]
   depot_tools_script:
     git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git $DEPOT_TOOLS
   gclient_sync_script: |
@@ -20,7 +20,7 @@ task:
     rm -rf flutter
     rm -rf out && rm -rf target
     # mv $CIRRUS_WORKING_DIR flutter
-    gclient sync
+    gclient sync -v
   checkout_source_script: |
     cd $ENGINE_PATH/src/flutter
     git remote -v
