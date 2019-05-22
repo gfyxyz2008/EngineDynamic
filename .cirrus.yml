@@ -25,6 +25,8 @@ task:
     cd $ENGINE_PATH/src/flutter
     git remote -v
     git fetch origin --prune
+    echo $CIRRUS_BRANCH
+    git show -s
     git checkout $CIRRUS_BRANCH
     git show -s
   gclient_sync_again_script: |
