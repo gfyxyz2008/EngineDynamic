@@ -1,5 +1,3 @@
-
-
 task:
   name: build_ios
   use_compute_credits: $CIRRUS_USER_COLLABORATOR == 'true'
