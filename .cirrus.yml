@@ -1,101 +1,53 @@
-gcp_credentials: ENCRYPTED[987a78af29b91ce8489594c9ab3fec21845bbe5ba68294b8f6def3cf0d380830f06687a89ea69c87344c5ade369700fe]
-
 task:
-  gke_container:
-   image: gcr.io/flutter-cirrus/build-engine-image:latest
-   cluster_name: build-32-cluster
-   zone: us-central1-a
-   namespace: default
-   cpu: 30 # can't use all 30-cores; system pods needs cores too
-   memory: 100Gb # similarly, can't use all 100Gb memory
+  name: build_ios
+  use_compute_credits: $CIRRUS_USER_COLLABORATOR == 'true'
+  osx_instance:
+    image: high-sierra-xcode-9.4.1
   env:
     CIRRUS_WORKING_DIR: "/tmp/github_repo"
-    ENGINE_PATH: "/tmp/clean_engine"
+    ENGINE_PATH: "/tmp/engine"
     DEPOT_TOOLS: "/tmp/depot_tools"
     PATH: "$DEPOT_TOOLS:$PATH"
+    DEPLOY_TOKEN: ENCRYPTED[5359c00cb515791954226adbc909f69ad81739962c81c175ce79323a6db20291b3dd7476178704e12355b660668c2b8d]
   depot_tools_script:
     git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git $DEPOT_TOOLS
   gclient_sync_script: |
     mkdir -p $ENGINE_PATH/src
-    echo 'solutions = [{"managed": False,"name": "src/flutter","url": "git@github.com:flutter/engine.git","deps_file": "DEPS", "custom_vars": {"download_android_deps" : False, "download_windows_deps" : False,},},]' > $ENGINE_PATH/.gclient
+    echo 'solutions = [{"managed": False,"name": "src/flutter","url": "https://github.com/FlutterPrograms/EngineDynamic.git","deps_file": "DEPS", "custom_vars": {"download_android_deps" : False, "download_windows_deps" : False,},},]' > $ENGINE_PATH/.gclient
     cd $ENGINE_PATH/src
     rm -rf flutter
-    rm -rf out
-    mv $CIRRUS_WORKING_DIR flutter
+    rm -rf out && rm -rf target
+    # mv $CIRRUS_WORKING_DIR flutter
+    gclient sync -v
+  checkout_source_script: |
+    cd $ENGINE_PATH/src/flutter
+    git remote -v
+    git fetch origin --prune
+    git show -s
+    echo $CIRRUS_BRANCH && git checkout $CIRRUS_BRANCH
+    git show -s
+  gclient_sync_again_script: |
+    cd $ENGINE_PATH/src
     gclient sync
-
-  matrix:
-    - name: build_and_test_host
-      compile_host_script: |
-        cd $ENGINE_PATH/src
-        ./flutter/tools/gn --unoptimized
-        ninja -C out/host_debug_unopt
-      test_host_script: cd $ENGINE_PATH/src && ./flutter/testing/run_tests.sh host_debug_unopt
-    - name: build_and_test_host_profile
-      compile_host_script: |
-        cd $ENGINE_PATH/src
-        ./flutter/tools/gn --runtime-mode profile --no-lto
-        ninja -C out/host_profile
-      test_host_script: cd $ENGINE_PATH/src && ./flutter/testing/run_tests.sh host_profile
-    - name: build_and_test_host_release
-      compile_host_script: |
-        cd $ENGINE_PATH/src
-        ./flutter/tools/gn --runtime-mode release --no-lto
-        ninja -C out/host_release
-      test_host_script: cd $ENGINE_PATH/src && ./flutter/testing/run_tests.sh host_release
-    - name: build_android
-      get_android_sdk_script: |
-        echo 'solutions = [{"managed": False,"name": "src/flutter","url": "git@github.com:flutter/engine.git","deps_file": "DEPS", "custom_vars": {"download_windows_deps" : False,},},]' > $ENGINE_PATH/.gclient
-        cd $ENGINE_PATH/src
-        gclient sync
-      lint_host_script: |
-        cd $ENGINE_PATH/src/flutter/tools/android_lint
-        $ENGINE_PATH/src/third_party/dart/tools/sdks/dart-sdk/bin/pub get
-        $ENGINE_PATH/src/third_party/dart/tools/sdks/dart-sdk/bin/dart bin/main.dart
-      compile_host_script: |
-        cd $ENGINE_PATH/src
-        ./flutter/tools/gn --android --unoptimized
-        ninja -C out/android_debug_unopt
-        mkdir javadoc_tmp
-        ./flutter/tools/gen_javadoc.py --out-dir javadoc_tmp
-    - name: format_and_dart_test
-      format_script: cd $ENGINE_PATH/src/flutter && ./ci/format.sh
-      build_script: cd $ENGINE_PATH/src/flutter && ./ci/build.sh
-
-task:
-  gce_instance:
-    image_project: flutter-cirrus
-    image_name: flutter-engine-windows-server-2016-core
-    zone: us-central1-a
-    platform: windows
-    cpu: 32
-    memory: 32Gb
-    disk: 50
-
-  env:
-    # Cirrus is somehow not picking up the environment variables set in the VM image.
-    PATH: "c:/depot_tools;c:/MinGit/cmd;$PATH"
-    DEPOT_TOOLS_WIN_TOOLCHAIN: 0
-    GYP_MSVS_OVERRIDE_PATH: "c:/Program Files (x86)/Microsoft Visual Studio/2017/Community"
-
-    ENGINE_PATH: "c:/flutter/engine"
-
-  # robocopy can return 1 for successful copy; suppress its error code.
-  # move somehow doesn't work as it complains that the file is being used by another process.
-  gclient_sync_script: |
-    robocopy %CIRRUS_WORKING_DIR% %ENGINE_PATH%/src/flutter /MIR || (cmd /s /c exit /b 0)
-    cd %ENGINE_PATH%/src
-    gclient sync
-
-  matrix:
-    - name: build_windows_debug
-      compile_host_script: |
-        cd %ENGINE_PATH%/src
-        python flutter/tools/gn --runtime-mode debug --unoptimized
-        ninja -C out/host_debug_unopt
-
-    - name: build_windows_debug_unopt
-      compile_host_script: |
-        cd %ENGINE_PATH%/src
-        python flutter/tools/gn --runtime-mode debug
-        ninja -C out/host_debug
+  compile_ios_debug_script: |
+    cd $ENGINE_PATH/src
+    mkdir -p target/ios_debug
+    ./flutter/tools/gn --ios
+    ninja -C out/ios_debug
+    cp -Rf out/ios_debug/Flutter.framework target/ios_debug/Flutter.framework
+    rm -rf out/ios_debug
+  compile_ios_debug_sim_script: |
+    cd $ENGINE_PATH/src
+    mkdir -p target/ios_debug_sim
+    ./flutter/tools/gn --ios --simulator
+    ninja -C out/ios_debug_sim
+    cp -Rf out/ios_debug_sim/Flutter.framework target/ios_debug_sim/Flutter.framework
+    rm -rf out/ios_debug_sim
+  lipo_framework_script: |
+    cd $ENGINE_PATH/src
+    mkdir -p target/ios_debug_all
+    cp -Rf target/ios_debug/Flutter.framework target/ios_debug_all/Flutter.framework
+    lipo -create target/ios_debug/Flutter.framework/Flutter target/ios_debug_sim/Flutter.framework/Flutter -output target/ios_debug_all/Flutter.framework/Flutter
+    lipo -info target/ios_debug_all/Flutter.framework/Flutter
+  deploy_framework_script: |
+    ./hot_update_ci/deploy_framework.sh
