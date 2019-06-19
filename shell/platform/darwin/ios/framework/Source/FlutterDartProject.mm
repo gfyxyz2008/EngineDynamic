@@ -145,6 +145,64 @@ static flutter::Settings DefaultSettingsForProcess(NSBundle* bundle = nil) {
   return settings;
 }
 
+/**
+ * Engine Dynamic Additional
+ */
+static blink::Settings DefaultSettingsForProcess(NSURL* flutterAssetsURL) {
+    
+    NSBundle* engineBundle = [NSBundle bundleForClass:[FlutterViewController class]];
+    
+    auto command_line = shell::CommandLineFromNSProcessInfo();
+    auto settings = shell::SettingsFromCommandLine(command_line);
+    
+    settings.task_observer_add = [](intptr_t key, fml::closure callback) {
+        fml::MessageLoop::GetCurrent().AddTaskObserver(key, std::move(callback));
+    };
+    
+    settings.task_observer_remove = [](intptr_t key) {
+        fml::MessageLoop::GetCurrent().RemoveTaskObserver(key);
+    };
+    
+    // The command line arguments may not always be complete. If they aren't, attempt to fill in
+    // defaults.
+    
+    // Flutter ships the ICU data file in the the bundle of the engine. Look for it there.
+    if (settings.icu_data_path.size() == 0) {
+        NSString* icuDataPath = [engineBundle pathForResource:@"icudtl" ofType:@"dat"];
+        if (icuDataPath.length > 0) {
+            settings.icu_data_path = icuDataPath.UTF8String;
+        }
+    }
+    
+    if (settings.assets_path.size() == 0) {
+
+        if (flutterAssetsURL != nil &&
+            [[NSFileManager defaultManager] fileExistsAtPath:flutterAssetsURL.path]) {
+
+            settings.assets_path = flutterAssetsURL.path.UTF8String;
+
+            // Check if there is an application kernel snapshot in the assets directory we could
+            // potentially use.  Looking for the snapshot makes sense only if we have a VM that can use
+            // it.
+            if (!blink::DartVM::IsRunningPrecompiledCode()) {
+                NSURL* applicationKernelSnapshotURL =
+                [NSURL URLWithString:@(kApplicationKernelSnapshotFileName)
+                        relativeToURL:[NSURL fileURLWithPath:flutterAssetsURL.path]];
+                if ([[NSFileManager defaultManager] fileExistsAtPath:applicationKernelSnapshotURL.path]) {
+                    settings.application_kernel_asset = applicationKernelSnapshotURL.path.UTF8String;
+                } else {
+                    NSLog(@"Failed to find snapshot: %@", applicationKernelSnapshotURL.path);
+                }
+            }
+        }
+        else {
+            NSLog(@"Failed to find assets path \"%@\"", flutterAssetsURL);
+        }
+    }
+  
+  return settings;
+}
+
 @implementation FlutterDartProject {
   fml::scoped_nsobject<NSBundle> _precompiledDartBundle;
   flutter::Settings _settings;
@@ -164,6 +222,19 @@ static flutter::Settings DefaultSettingsForProcess(NSBundle* bundle = nil) {
   if (self) {
     _precompiledDartBundle.reset([bundle retain]);
     _settings = DefaultSettingsForProcess(bundle);
+  }
+
+  return self;
+}
+
+/**
+ * Engine Dynamic Additional
+ */
+- (instancetype)initWithFlutterAssetsURL:(NSURL*)flutterAssetsURL {
+  self = [super init];
+
+  if (self) {
+    _settings = DefaultSettingsForProcess(flutterAssetsURL);
   }
 
   return self;
