@@ -17,6 +17,7 @@ class ParagraphGeometricStyle {
     this.wordSpacing,
     this.decoration,
     this.ellipsis,
+    this.shadows,
   });
 
   final ui.FontWeight fontWeight;
@@ -29,6 +30,7 @@ class ParagraphGeometricStyle {
   final double wordSpacing;
   final String decoration;
   final String ellipsis;
+  final List<ui.Shadow> shadows;
 
   // Since all fields above are primitives, cache hashcode since ruler lookups
   // use this style as key.
@@ -86,7 +88,7 @@ class ParagraphGeometricStyle {
       result.write(DomRenderer.defaultFontSize);
     }
     result.write(' ');
-    result.write(effectiveFontFamily);
+    result.write(canonicalizeFontFamily(effectiveFontFamily));
 
     return result.toString();
   }
@@ -191,12 +193,19 @@ class TextDimensions {
       // match the style set on the `element`. Setting text as plain string is
       // faster because it doesn't change the DOM structure or CSS attributes,
       // and therefore doesn't trigger style recalculations in the browser.
-      _element.text = plainText;
+      if (plainText.endsWith('\n')) {
+        // On the web the last newline is ignored. To be consistent with
+        // native engine implementation we add extra newline to get correct
+        // height measurement.
+        _element.text = '$plainText\n';
+      } else {
+        _element.text = plainText;
+      }
     } else {
       // Rich text: deeply copy contents. This is the slow case that should be
       // avoided if fast layout performance is desired.
       final html.Element copy = from._paragraphElement.clone(true);
-      _element.children.addAll(copy.children);
+      _element.nodes.addAll(copy.nodes);
     }
   }
 
@@ -220,7 +229,7 @@ class TextDimensions {
   void applyStyle(ParagraphGeometricStyle style) {
     _element.style
       ..fontSize = style.fontSize != null ? '${style.fontSize.floor()}px' : null
-      ..fontFamily = style.effectiveFontFamily
+      ..fontFamily = canonicalizeFontFamily(style.effectiveFontFamily)
       ..fontWeight =
           style.fontWeight != null ? fontWeightToCss(style.fontWeight) : null
       ..fontStyle = style.fontStyle != null
@@ -396,6 +405,10 @@ class ParagraphRuler {
       ..border = '0'
       ..padding = '0';
 
+    if (assertionsEnabled) {
+      _singleLineHost.setAttribute('data-ruler', 'single-line');
+    }
+
     singleLineDimensions.applyStyle(style);
 
     // Force single-line (even if wider than screen) and preserve whitespaces.
@@ -418,6 +431,10 @@ class ParagraphRuler {
       ..border = '0'
       ..padding = '0';
 
+    if (assertionsEnabled) {
+      _minIntrinsicHost.setAttribute('data-ruler', 'min-intrinsic');
+    }
+
     minIntrinsicDimensions.applyStyle(style);
 
     // "flex: 0" causes the paragraph element to shrink horizontally, exposing
@@ -425,8 +442,10 @@ class ParagraphRuler {
     minIntrinsicDimensions._element.style
       ..flex = '0'
       ..display = 'inline'
-      // Preserve whitespaces.
-      ..whiteSpace = 'pre-wrap';
+      // Preserve newlines, wrap text, remove end of line spaces.
+      // Not using pre-wrap here since end of line space hang measurement
+      // changed in Chrome 77 Beta.
+      ..whiteSpace = 'pre-line';
 
     _minIntrinsicHost.append(minIntrinsicDimensions._element);
     rulerManager.addHostElement(_minIntrinsicHost);
@@ -444,6 +463,10 @@ class ParagraphRuler {
       ..margin = '0'
       ..border = '0'
       ..padding = '0';
+
+    if (assertionsEnabled) {
+      _constrainedHost.setAttribute('data-ruler', 'constrained');
+    }
 
     constrainedDimensions.applyStyle(style);
     final html.CssStyleDeclaration elementStyle =
@@ -483,6 +506,10 @@ class ParagraphRuler {
       ..margin = '0'
       ..border = '0'
       ..padding = '0';
+
+    if (assertionsEnabled) {
+      _lineHeightHost.setAttribute('data-ruler', 'line-height');
+    }
 
     lineHeightDimensions.applyStyle(style);
 
@@ -569,6 +596,53 @@ class ParagraphRuler {
     // than the size it reports back. When that happens the text may be wrap
     // when we thought it didn't.
     constrainedDimensions.updateWidth('${constraints.width + 0.5}px');
+  }
+
+  /// Returns text position in a paragraph that contains multiple
+  /// nested spans given an offset.
+  int hitTest(ui.ParagraphConstraints constraints, ui.Offset offset) {
+    measureWithConstraints(constraints);
+    // Get paragraph element root used to measure constrainedDimensions.
+    final html.HtmlElement el = constrainedDimensions._element;
+    final List<html.Node> textNodes = <html.Node>[];
+    // Collect all text nodes (breadth first traversal).
+    // Since there is no api to get bounds of text nodes directly we work
+    // upwards and measure span elements and finally the paragraph.
+    _collectTextNodes(el.childNodes, textNodes);
+    // Hit test spans starting from leaf nodes up (backwards).
+    for (int i = textNodes.length - 1; i >= 0; i--) {
+      final html.Node node = textNodes[i];
+      // Check if offset is within client rect bounds of text node's
+      // parent element.
+      final html.Element parent = node.parentNode;
+      final html.Rectangle<num> bounds = parent.getBoundingClientRect();
+      final double dx = offset.dx;
+      final double dy = offset.dy;
+      if (dx >= bounds.left &&
+          dy < bounds.right &&
+          dy >= bounds.top &&
+          dy < bounds.bottom) {
+        // We found the element bounds that contains offset.
+        // Calculate text position for this node.
+        int textPosition = 0;
+        for (int nodeIndex = 0; nodeIndex < i; nodeIndex++) {
+          textPosition += textNodes[nodeIndex].text.length;
+        }
+        return textPosition;
+      }
+    }
+    return 0;
+  }
+
+  void _collectTextNodes(Iterable<html.Node> nodes, List<html.Node> textNodes) {
+    for (html.Node node in nodes) {
+      if (node.nodeType == html.Node.TEXT_NODE) {
+        textNodes.add(node);
+      }
+      if (node.hasChildNodes()) {
+        _collectTextNodes(node.childNodes, textNodes);
+      }
+    }
   }
 
   /// Performs clean-up after a measurement is done, preparing this ruler for
@@ -703,8 +777,13 @@ class ParagraphRuler {
 
   MeasurementResult cacheLookup(
       EngineParagraph paragraph, ui.ParagraphConstraints constraints) {
+    final String plainText = paragraph._plainText;
+    if (plainText == null) {
+      // Multi span paragraph, do not use cache item.
+      return null;
+    }
     final List<MeasurementResult> constraintCache =
-        _measurementCache[paragraph._plainText];
+        _measurementCache[plainText];
     if (constraintCache == null) {
       return null;
     }

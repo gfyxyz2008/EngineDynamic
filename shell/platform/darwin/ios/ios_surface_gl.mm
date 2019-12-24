@@ -38,12 +38,11 @@ void IOSSurfaceGL::UpdateStorageSizeIfNecessary() {
   }
 }
 
-std::unique_ptr<Surface> IOSSurfaceGL::CreateGPUSurface() {
+std::unique_ptr<Surface> IOSSurfaceGL::CreateGPUSurface(GrContext* gr_context) {
+  if (gr_context) {
+    return std::make_unique<GPUSurfaceGL>(sk_ref_sp(gr_context), this, true);
+  }
   return std::make_unique<GPUSurfaceGL>(this, true);
-}
-
-std::unique_ptr<Surface> IOSSurfaceGL::CreateSecondaryGPUSurface(GrContext* gr_context) {
-  return std::make_unique<GPUSurfaceGL>(sk_ref_sp(gr_context), this, true);
 }
 
 intptr_t IOSSurfaceGL::GLContextFBO() const {
@@ -75,7 +74,7 @@ bool IOSSurfaceGL::GLContextPresent() {
 }
 
 // |ExternalViewEmbedder|
-sk_sp<SkSurface> IOSSurfaceGL::GetRootSurface() {
+SkCanvas* IOSSurfaceGL::GetRootCanvas() {
   // On iOS, the root surface is created from the on-screen render target. Only the surfaces for the
   // various overlays are controlled by this class.
   return nullptr;
@@ -101,7 +100,7 @@ void IOSSurfaceGL::CancelFrame() {
 }
 
 // |ExternalViewEmbedder|
-void IOSSurfaceGL::BeginFrame(SkISize frame_size, GrContext* context) {
+void IOSSurfaceGL::BeginFrame(SkISize frame_size, GrContext* context, double device_pixel_ratio) {
   FlutterPlatformViewsController* platform_views_controller = GetPlatformViewsController();
   FML_CHECK(platform_views_controller != nullptr);
   platform_views_controller->SetFrameSize(frame_size);
@@ -146,7 +145,7 @@ bool IOSSurfaceGL::SubmitFrame(GrContext* context) {
     return true;
   }
 
-  bool submitted = platform_views_controller->SubmitFrame(true, std::move(context), context_);
+  bool submitted = platform_views_controller->SubmitFrame(std::move(context), context_);
   [CATransaction commit];
   return submitted;
 }

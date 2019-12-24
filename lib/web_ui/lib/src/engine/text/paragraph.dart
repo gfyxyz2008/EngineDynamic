@@ -165,7 +165,8 @@ class EngineParagraph implements ui.Paragraph {
     } else {
       canDrawTextOnCanvas = _measurementResult.isSingleLine &&
           _plainText != null &&
-          _geometricStyle.ellipsis == null;
+          _geometricStyle.ellipsis == null &&
+          _geometricStyle.shadows == null;
     }
 
     return canDrawTextOnCanvas &&
@@ -201,7 +202,7 @@ class EngineParagraph implements ui.Paragraph {
   }) {
     assert(boxHeightStyle != null);
     assert(boxWidthStyle != null);
-    if (_plainText == null) {
+    if (_plainText == null || start == end) {
       return <ui.TextBox>[];
     }
 
@@ -236,9 +237,8 @@ class EngineParagraph implements ui.Paragraph {
   @override
   ui.TextPosition getPositionForOffset(ui.Offset offset) {
     if (_plainText == null) {
-      return const ui.TextPosition(offset: 0);
+      return getPositionForMultiSpanOffset(offset);
     }
-
     final double dx = offset.dx - _alignOffset;
     final TextMeasurementService instance = _measurementService;
 
@@ -273,15 +273,38 @@ class EngineParagraph implements ui.Paragraph {
     }
   }
 
+  ui.TextPosition getPositionForMultiSpanOffset(ui.Offset offset) {
+    assert(_lastUsedConstraints != null,
+        'missing call to paragraph layout before reading text position');
+    final TextMeasurementService instance = _measurementService;
+    return instance.getTextPositionForOffset(
+        this, _lastUsedConstraints, offset);
+  }
+
   @override
-  List<int> getWordBoundary(int offset) {
+  ui.TextRange getWordBoundary(ui.TextPosition position) {
+    ui.TextPosition textPosition = position;
     if (_plainText == null) {
-      return <int>[offset, offset];
+      return ui.TextRange(start: textPosition.offset, end: textPosition.offset);
     }
 
-    final int start = WordBreaker.prevBreakIndex(_plainText, offset);
-    final int end = WordBreaker.nextBreakIndex(_plainText, offset);
-    return <int>[start, end];
+    final int start =
+        WordBreaker.prevBreakIndex(_plainText, textPosition.offset);
+    final int end = WordBreaker.nextBreakIndex(_plainText, textPosition.offset);
+    return ui.TextRange(start: start, end: end);
+  }
+
+  @override
+  ui.TextRange getLineBoundary(ui.TextPosition position) {
+    // TODO(flutter_web): https://github.com/flutter/flutter/issues/39537
+    // Depends upon LineMetrics measurement.
+    return null;
+  }
+
+  @override
+  List<ui.LineMetrics> computeLineMetrics() {
+    // TODO(flutter_web): https://github.com/flutter/flutter/issues/39537
+    return null;
   }
 }
 
@@ -340,7 +363,11 @@ class EngineParagraphStyle implements ui.ParagraphStyle {
   }
 
   double get _lineHeight {
-    if (_strutStyle == null || _strutStyle._height == null) {
+    // TODO(mdebbar): Implement proper support for strut styles.
+    // https://github.com/flutter/flutter/issues/32243
+    if (_strutStyle == null ||
+        _strutStyle._height == null ||
+        _strutStyle._height == 0) {
       // When there's no strut height, always use paragraph style height.
       return _height;
     }
@@ -707,7 +734,7 @@ class EngineParagraphBuilder implements ui.ParagraphBuilder {
     double baselineOffset,
     ui.TextBaseline baseline,
   }) {
-    // TODO(garyq): Implement web_ui version of this.
+    // TODO(garyq): Implement stub_ui version of this.
     throw UnimplementedError();
   }
 
@@ -777,6 +804,7 @@ class EngineParagraphBuilder implements ui.ParagraphBuilder {
     ui.Locale locale = _paragraphStyle._locale;
     ui.Paint background;
     ui.Paint foreground;
+    List<ui.Shadow> shadows;
 
     int i = 0;
 
@@ -831,6 +859,9 @@ class EngineParagraphBuilder implements ui.ParagraphBuilder {
       if (style._foreground != null) {
         foreground = style._foreground;
       }
+      if (style._shadows != null) {
+        shadows = style._shadows;
+      }
       i++;
     }
 
@@ -850,6 +881,7 @@ class EngineParagraphBuilder implements ui.ParagraphBuilder {
       locale: locale,
       background: background,
       foreground: foreground,
+      shadows: shadows,
     );
 
     ui.Paint paint;
@@ -879,6 +911,7 @@ class EngineParagraphBuilder implements ui.ParagraphBuilder {
           wordSpacing: wordSpacing,
           decoration: _textDecorationToCssString(decoration, decorationStyle),
           ellipsis: _paragraphStyle._ellipsis,
+          shadows: shadows,
         ),
         plainText: '',
         paint: paint,
@@ -932,6 +965,7 @@ class EngineParagraphBuilder implements ui.ParagraphBuilder {
         wordSpacing: wordSpacing,
         decoration: _textDecorationToCssString(decoration, decorationStyle),
         ellipsis: _paragraphStyle._ellipsis,
+        shadows: shadows,
       ),
       plainText: plainText,
       paint: paint,
@@ -950,7 +984,7 @@ class EngineParagraphBuilder implements ui.ParagraphBuilder {
       final dynamic op = _ops[i];
       if (op is EngineTextStyle) {
         final html.SpanElement span = domRenderer.createElement('span');
-        _applyTextStyleToElement(element: span, style: op);
+        _applyTextStyleToElement(element: span, style: op, isSpan: true);
         if (op._background != null) {
           _applyTextBackgroundToElement(element: span, style: op);
         }
@@ -990,8 +1024,11 @@ String fontWeightToCss(ui.FontWeight fontWeight) {
   if (fontWeight == null) {
     return null;
   }
+  return fontWeightIndexToCss(fontWeightIndex: fontWeight.index);
+}
 
-  switch (fontWeight.index) {
+String fontWeightIndexToCss({int fontWeightIndex = 3}) {
+  switch (fontWeightIndex) {
     case 0:
       return '100';
     case 1:
@@ -1014,7 +1051,7 @@ String fontWeightToCss(ui.FontWeight fontWeight) {
 
   assert(() {
     throw AssertionError(
-      'Failed to convert font weight $fontWeight to CSS.',
+      'Failed to convert font weight $fontWeightIndex to CSS.',
     );
   }());
 
@@ -1036,14 +1073,14 @@ void _applyParagraphStyleToElement({
   final html.CssStyleDeclaration cssStyle = element.style;
   if (previousStyle == null) {
     if (style._textAlign != null) {
-      cssStyle.textAlign = _textAlignToCssValue(
+      cssStyle.textAlign = textAlignToCssValue(
           style._textAlign, style._textDirection ?? ui.TextDirection.ltr);
     }
     if (style._lineHeight != null) {
       cssStyle.lineHeight = '${style._lineHeight}';
     }
     if (style._textDirection != null) {
-      cssStyle.direction = _textDirectionToCssValue(style._textDirection);
+      cssStyle.direction = _textDirectionToCss(style._textDirection);
     }
     if (style._fontSize != null) {
       cssStyle.fontSize = '${style._fontSize.floor()}px';
@@ -1056,18 +1093,18 @@ void _applyParagraphStyleToElement({
           style._fontStyle == ui.FontStyle.normal ? 'normal' : 'italic';
     }
     if (style._effectiveFontFamily != null) {
-      cssStyle.fontFamily = style._effectiveFontFamily;
+      cssStyle.fontFamily = canonicalizeFontFamily(style._effectiveFontFamily);
     }
   } else {
     if (style._textAlign != previousStyle._textAlign) {
-      cssStyle.textAlign = _textAlignToCssValue(
+      cssStyle.textAlign = textAlignToCssValue(
           style._textAlign, style._textDirection ?? ui.TextDirection.ltr);
     }
-    if (style._lineHeight != style._lineHeight) {
+    if (style._lineHeight != previousStyle._lineHeight) {
       cssStyle.lineHeight = '${style._lineHeight}';
     }
     if (style._textDirection != previousStyle._textDirection) {
-      cssStyle.direction = _textDirectionToCssValue(style._textDirection);
+      cssStyle.direction = _textDirectionToCss(style._textDirection);
     }
     if (style._fontSize != previousStyle._fontSize) {
       cssStyle.fontSize =
@@ -1082,7 +1119,7 @@ void _applyParagraphStyleToElement({
           : null;
     }
     if (style._fontFamily != previousStyle._fontFamily) {
-      cssStyle.fontFamily = style._fontFamily;
+      cssStyle.fontFamily = canonicalizeFontFamily(style._fontFamily);
     }
   }
 }
@@ -1091,10 +1128,13 @@ void _applyParagraphStyleToElement({
 /// corresponding CSS equivalents.
 ///
 /// If [previousStyle] is not null, updates only the mismatching attributes.
+/// If [isSpan] is true, the text element is a span within richtext and
+/// should not assign effectiveFontFamily if fontFamily was not specified.
 void _applyTextStyleToElement({
   @required html.HtmlElement element,
   @required EngineTextStyle style,
   EngineTextStyle previousStyle,
+  bool isSpan = false,
 }) {
   assert(element != null);
   assert(style != null);
@@ -1115,8 +1155,17 @@ void _applyTextStyleToElement({
       cssStyle.fontStyle =
           style._fontStyle == ui.FontStyle.normal ? 'normal' : 'italic';
     }
-    if (style._effectiveFontFamily != null) {
-      cssStyle.fontFamily = style._effectiveFontFamily;
+    // For test environment use effectiveFontFamily since we need to
+    // consistently use Ahem font.
+    if (isSpan && !ui.debugEmulateFlutterTesterEnvironment) {
+      if (style._fontFamily != null) {
+        cssStyle.fontFamily = canonicalizeFontFamily(style._fontFamily);
+      }
+    } else {
+      if (style._effectiveFontFamily != null) {
+        cssStyle.fontFamily =
+            canonicalizeFontFamily(style._effectiveFontFamily);
+      }
     }
     if (style._letterSpacing != null) {
       cssStyle.letterSpacing = '${style._letterSpacing}px';
@@ -1126,6 +1175,9 @@ void _applyTextStyleToElement({
     }
     if (style._decoration != null) {
       updateDecoration = true;
+    }
+    if (style._shadows != null) {
+      cssStyle.textShadow = _shadowListToCss(style._shadows);
     }
   } else {
     if (style._color != previousStyle._color ||
@@ -1149,7 +1201,7 @@ void _applyTextStyleToElement({
           : null;
     }
     if (style._fontFamily != previousStyle._fontFamily) {
-      cssStyle.fontFamily = style._fontFamily;
+      cssStyle.fontFamily = canonicalizeFontFamily(style._fontFamily);
     }
     if (style._letterSpacing != previousStyle._letterSpacing) {
       cssStyle.letterSpacing = '${style._letterSpacing}px';
@@ -1161,6 +1213,9 @@ void _applyTextStyleToElement({
         style._decorationStyle != previousStyle._decorationStyle ||
         style._decorationColor != previousStyle._decorationColor) {
       updateDecoration = true;
+    }
+    if (style._shadows != previousStyle._shadows) {
+      cssStyle.textShadow = _shadowListToCss(style._shadows);
     }
   }
 
@@ -1177,6 +1232,27 @@ void _applyTextStyleToElement({
       }
     }
   }
+}
+
+String _shadowListToCss(List<ui.Shadow> shadows) {
+  if (shadows.isEmpty) {
+    return '';
+  }
+  // CSS text-shadow is a comma separated list of shadows.
+  // <offsetx> <offsety> <blur-radius> <color>.
+  // Shadows are applied front-to-back with first shadow on top.
+  // Color is optional. offsetx,y are required. blur-radius is optional as well
+  // and defaults to 0.
+  StringBuffer sb = new StringBuffer();
+  for (int i = 0, len = shadows.length; i < len; i++) {
+    if (i != 0) {
+      sb.write(',');
+    }
+    ui.Shadow shadow = shadows[i];
+    sb.write('${shadow.offset.dx}px ${shadow.offset.dy}px '
+        '${shadow.blurRadius}px ${shadow.color.toCssString()}');
+  }
+  return sb.toString();
 }
 
 /// Applies background color properties in text style to paragraph or span
@@ -1245,10 +1321,28 @@ String _decorationStyleToCssString(ui.TextDecorationStyle decorationStyle) {
 /// ```css
 /// direction: rtl;
 /// ```
-String _textDirectionToCssValue(ui.TextDirection textDirection) {
-  return textDirection == ui.TextDirection.ltr
-      ? null // it's the default
-      : 'rtl';
+String _textDirectionToCss(ui.TextDirection textDirection) {
+  if (textDirection == null) {
+    return null;
+  }
+  return textDirectionIndexToCss(textDirection.index);
+}
+
+String textDirectionIndexToCss(int textDirectionIndex) {
+  switch (textDirectionIndex) {
+    case 0:
+      return 'rtl';
+    case 1:
+      return null; // ltr is the default
+  }
+
+  assert(() {
+    throw AssertionError(
+      'Failed to convert text direction $textDirectionIndex to CSS',
+    );
+  }());
+
+  return null;
 }
 
 /// Converts [align] to its corresponding CSS value.
@@ -1258,8 +1352,7 @@ String _textDirectionToCssValue(ui.TextDirection textDirection) {
 /// ```css
 /// text-align: right;
 /// ```
-String _textAlignToCssValue(
-    ui.TextAlign align, ui.TextDirection textDirection) {
+String textAlignToCssValue(ui.TextAlign align, ui.TextDirection textDirection) {
   switch (align) {
     case ui.TextAlign.left:
       return 'left';

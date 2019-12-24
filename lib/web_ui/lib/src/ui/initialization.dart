@@ -9,12 +9,9 @@ Future<void> webOnlyInitializePlatform({
   engine.AssetManager assetManager,
 }) async {
   if (!debugEmulateFlutterTesterEnvironment) {
-    engine.window.webOnlyLocationStrategy = const engine.HashLocationStrategy();
+    engine.window.locationStrategy = const engine.HashLocationStrategy();
   }
 
-  assetManager ??= const engine.AssetManager();
-  await webOnlySetAssetManager(assetManager);
-  await _fontCollection.ensureFontsLoaded();
   engine.webOnlyInitializeEngine();
 
   // This needs to be after `webOnlyInitializeEngine` because that is where the
@@ -22,6 +19,15 @@ Future<void> webOnlyInitializePlatform({
   if (engine.experimentalUseSkia) {
     await engine.initializeSkia();
   }
+
+  assetManager ??= const engine.AssetManager();
+  await webOnlySetAssetManager(assetManager);
+  if (engine.experimentalUseSkia) {
+    await engine.skiaFontCollection.ensureFontsLoaded();
+  } else {
+    await _fontCollection.ensureFontsLoaded();
+  }
+
   _webOnlyIsInitialized = true;
 }
 
@@ -43,13 +49,23 @@ Future<void> webOnlySetAssetManager(engine.AssetManager assetManager) async {
 
   _assetManager = assetManager;
 
-  _fontCollection ??= engine.FontCollection();
-  _fontCollection.clear();
-  if (_assetManager != null) {
-    await _fontCollection.registerFonts(_assetManager);
+  if (engine.experimentalUseSkia) {
+    engine.skiaFontCollection ??= engine.SkiaFontCollection();
+  } else {
+    _fontCollection ??= engine.FontCollection();
+    _fontCollection.clear();
   }
 
-  if (debugEmulateFlutterTesterEnvironment) {
+
+  if (_assetManager != null) {
+    if (engine.experimentalUseSkia) {
+      await engine.skiaFontCollection.registerFonts(_assetManager);
+    } else {
+      await _fontCollection.registerFonts(_assetManager);
+    }
+  }
+
+  if (debugEmulateFlutterTesterEnvironment && !engine.experimentalUseSkia) {
     _fontCollection.debugRegisterTestFonts();
   }
 }

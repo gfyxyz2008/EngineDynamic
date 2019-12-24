@@ -8,31 +8,6 @@ class SkRecordingCanvas implements RecordingCanvas {
   final js.JsObject skCanvas;
   SkRecordingCanvas(this.skCanvas);
 
-  js.JsObject _makeSkRect(ui.Rect rect) {
-    return js.JsObject(canvasKit['LTRBRect'],
-        <double>[rect.left, rect.top, rect.right, rect.bottom]);
-  }
-
-  js.JsObject _makeSkPaint(ui.Paint paint) {
-    final skPaint = js.JsObject(canvasKit['SkPaint']);
-
-    skPaint.callMethod('setColor', <int>[paint.color.value]);
-
-    js.JsObject skPaintStyle;
-    switch (paint.style) {
-      case ui.PaintingStyle.stroke:
-        skPaintStyle = canvasKit['PaintStyle']['Stroke'];
-        break;
-      case ui.PaintingStyle.fill:
-        skPaintStyle = canvasKit['PaintStyle']['Fill'];
-        break;
-    }
-    skPaint.callMethod('setStyle', <js.JsObject>[skPaintStyle]);
-
-    skPaint.callMethod('setAntiAlias', <bool>[paint.isAntiAlias]);
-    return skPaint;
-  }
-
   @override
   bool _didDraw = true;
 
@@ -40,7 +15,11 @@ class SkRecordingCanvas implements RecordingCanvas {
   bool _hasArbitraryPaint = true;
 
   @override
-  int saveCount;
+  int get saveCount => skCanvas.callMethod('getSaveCount');
+
+  // This is required to implement RecordingCanvas.
+  @override
+  int _saveCount = -1;
 
   @override
   // TODO: implement _commands
@@ -52,42 +31,75 @@ class SkRecordingCanvas implements RecordingCanvas {
 
   @override
   void apply(EngineCanvas engineCanvas) {
-    throw 'apply';
+    throw UnimplementedError("The Skia backend doesn't support apply()");
   }
 
   @override
-  void clipPath(ui.Path path) {
-    throw 'clipPath';
+  void clipPath(ui.Path path, {bool doAntiAlias = true}) {
+    final SkPath skPath = path;
+    final js.JsObject intersectClipOp = canvasKit['ClipOp']['Intersect'];
+    skCanvas.callMethod('clipPath', <dynamic>[
+      skPath._skPath,
+      intersectClipOp,
+      doAntiAlias,
+    ]);
   }
 
   @override
-  void clipRRect(ui.RRect rrect) {
-    throw 'clipRRect';
+  void clipRRect(
+    ui.RRect rrect, {
+    bool doAntiAlias = true,
+  }) {
+    // TODO(het): Use `clipRRect` when CanvasKit makes it available.
+    // CanvasKit doesn't expose `Canvas.clipRRect`, so we create a path, add the
+    // RRect to it, and call clipPath with it.
+    final SkPath rrectPath = SkPath();
+    rrectPath.addRRect(rrect);
+    clipPath(rrectPath, doAntiAlias: doAntiAlias);
   }
 
   @override
-  void clipRect(ui.Rect rect) {
-    throw 'clipRect';
+  void clipRect(
+    ui.Rect rect, {
+    ui.ClipOp clipOp = ui.ClipOp.intersect,
+    bool doAntiAlias = true,
+  }) {
+    js.JsObject skClipOp;
+    switch (clipOp) {
+      case ui.ClipOp.difference:
+        skClipOp = canvasKit['ClipOp']['Difference'];
+        break;
+      case ui.ClipOp.intersect:
+        skClipOp = canvasKit['ClipOp']['Intersect'];
+        break;
+    }
+
+    skCanvas.callMethod(
+        'clipRect', <dynamic>[makeSkRect(rect), skClipOp, doAntiAlias]);
   }
 
   @override
   ui.Rect computePaintBounds() {
-    throw 'computePaintBounds';
+    throw UnimplementedError(
+        "The Skia backend doesn't use computePaintBounds()");
   }
 
   @override
   void debugDumpCommands() {
-    throw 'debugDumpCommands';
+    throw UnimplementedError(
+        "The Skia backend doesn't use debugDumpCommands()");
   }
 
   @override
   void debugEnforceArbitraryPaint() {
-    throw 'debugEnforceArbitraryPaint';
+    throw UnimplementedError(
+        "The Skia backend doesn't use debugEnforceArbitraryPaint()");
   }
 
   @override
   String debugPrintCommands() {
-    throw 'debugPrintCommands';
+    throw UnimplementedError(
+        "The Skia backend doesn't use debugPrintCommands()");
   }
 
   @override
@@ -95,70 +107,125 @@ class SkRecordingCanvas implements RecordingCanvas {
 
   @override
   void drawCircle(ui.Offset c, double radius, ui.Paint paint) {
-    throw 'drawCircle';
+    skCanvas.callMethod('drawCircle', <dynamic>[
+      c.dx,
+      c.dy,
+      radius,
+      makeSkPaint(paint),
+    ]);
   }
 
   @override
   void drawColor(ui.Color color, ui.BlendMode blendMode) {
+    // TODO(het): Implement this once SkCanvas.drawColor becomes available.
     throw 'drawColor';
   }
 
   @override
   void drawDRRect(ui.RRect outer, ui.RRect inner, ui.Paint paint) {
-    throw 'drawDRRect';
+    skCanvas.callMethod('drawDRRect', <js.JsObject>[
+      makeSkRRect(outer),
+      makeSkRRect(inner),
+      makeSkPaint(paint),
+    ]);
   }
 
   @override
   void drawImage(ui.Image image, ui.Offset offset, ui.Paint paint) {
-    throw 'drawImage';
+    final SkImage skImage = image;
+    skCanvas.callMethod('drawImage', <dynamic>[
+      skImage.skImage,
+      offset.dx,
+      offset.dy,
+      makeSkPaint(paint),
+    ]);
   }
 
   @override
   void drawImageRect(ui.Image image, ui.Rect src, ui.Rect dst, ui.Paint paint) {
-    throw 'drawImageRect';
+    final SkImage skImage = image;
+    skCanvas.callMethod('drawImageRect', <dynamic>[
+      skImage.skImage,
+      makeSkRect(src),
+      makeSkRect(dst),
+      makeSkPaint(paint),
+      false,
+    ]);
   }
 
   @override
   void drawLine(ui.Offset p1, ui.Offset p2, ui.Paint paint) {
-    throw 'drawLine';
+    skCanvas.callMethod('drawLine', <dynamic>[
+      p1.dx,
+      p1.dy,
+      p2.dx,
+      p2.dy,
+      makeSkPaint(paint),
+    ]);
   }
 
   @override
   void drawOval(ui.Rect rect, ui.Paint paint) {
-    throw 'drawOval';
+    skCanvas.callMethod('drawOval', <js.JsObject>[
+      makeSkRect(rect),
+      makeSkPaint(paint),
+    ]);
   }
 
   @override
   void drawPaint(ui.Paint paint) {
-    throw 'drawPaint';
+    skCanvas.callMethod('drawPaint', <js.JsObject>[makeSkPaint(paint)]);
   }
 
   @override
   void drawParagraph(ui.Paragraph paragraph, ui.Offset offset) {
-    throw 'drawParagraph';
+    final SkParagraph skParagraph = paragraph;
+    skCanvas.callMethod('drawParagraph', <dynamic>[
+      skParagraph.skParagraph,
+      offset.dx,
+      offset.dy,
+    ]);
   }
 
   @override
   void drawPath(ui.Path path, ui.Paint paint) {
-    throw 'drawPath';
+    final js.JsObject skPaint = makeSkPaint(paint);
+    final SkPath enginePath = path;
+    final js.JsObject skPath = enginePath._skPath;
+    skCanvas.callMethod('drawPath', <js.JsObject>[skPath, skPaint]);
   }
 
   @override
   void drawRRect(ui.RRect rrect, ui.Paint paint) {
-    throw 'drawRRect';
+    skCanvas.callMethod('drawRRect', <js.JsObject>[
+      makeSkRRect(rrect),
+      makeSkPaint(paint),
+    ]);
   }
 
   @override
   void drawRect(ui.Rect rect, ui.Paint paint) {
-    final js.JsObject skRect = _makeSkRect(rect);
-    final js.JsObject skPaint = _makeSkPaint(paint);
+    final js.JsObject skRect = makeSkRect(rect);
+    final js.JsObject skPaint = makeSkPaint(paint);
     skCanvas.callMethod('drawRect', <js.JsObject>[skRect, skPaint]);
   }
 
   @override
   void drawShadow(ui.Path path, ui.Color color, double elevation,
       bool transparentOccluder) {
-    throw 'drawShadow';
+    drawSkShadow(skCanvas, path, color, elevation, transparentOccluder,
+        ui.window.devicePixelRatio);
+  }
+
+  @override
+  void drawVertices(
+      ui.Vertices vertices, ui.BlendMode blendMode, ui.Paint paint) {
+    SkVertices skVertices = vertices;
+    skCanvas.callMethod('drawVertices', <js.JsObject>[
+      skVertices.skVertices,
+      makeSkBlendMode(blendMode),
+      makeSkPaint(paint)
+    ]);
   }
 
   @override
@@ -166,46 +233,50 @@ class SkRecordingCanvas implements RecordingCanvas {
 
   @override
   void restore() {
-    throw 'restore';
+    skCanvas.callMethod('restore');
   }
 
   @override
   void rotate(double radians) {
-    throw 'rotate';
+    skCanvas
+        .callMethod('rotate', <double>[radians * 180.0 / math.pi, 0.0, 0.0]);
   }
 
   @override
   void save() {
-    throw 'save';
+    skCanvas.callMethod('save');
   }
 
   @override
   void saveLayer(ui.Rect bounds, ui.Paint paint) {
-    throw 'saveLayer';
+    skCanvas.callMethod('saveLayer', <js.JsObject>[
+      makeSkRect(bounds),
+      makeSkPaint(paint),
+    ]);
   }
 
   @override
   void saveLayerWithoutBounds(ui.Paint paint) {
-    throw 'saveLayerWithoutBounds';
+    skCanvas.callMethod('saveLayer', <js.JsObject>[null, makeSkPaint(paint)]);
   }
 
   @override
   void scale(double sx, double sy) {
-    throw 'scale';
+    skCanvas.callMethod('scale', <double>[sx, sy]);
   }
 
   @override
   void skew(double sx, double sy) {
-    throw 'skew';
+    skCanvas.callMethod('skew', <double>[sx, sy]);
   }
 
   @override
   void transform(Float64List matrix4) {
-    throw 'transform';
+    skCanvas.callMethod('concat', <js.JsArray<double>>[makeSkMatrix(matrix4)]);
   }
 
   @override
   void translate(double dx, double dy) {
-    throw 'translate';
+    skCanvas.callMethod('translate', <double>[dx, dy]);
   }
 }

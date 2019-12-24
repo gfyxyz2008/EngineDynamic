@@ -86,6 +86,7 @@ void commitScene(PersistedScene scene) {
     _debugPrintSurfaceStats(scene, _debugFrameNumber);
     _debugRepaintSurfaceStatsOverlay(scene);
   }
+
   assert(() {
     final List<String> validationErrors = <String>[];
     scene.debugValidate(validationErrors);
@@ -108,18 +109,6 @@ void commitScene(PersistedScene scene) {
     _debugFrameNumber++;
     return true;
   }());
-}
-
-/// Discards information about previously rendered frames, including DOM
-/// elements and cached canvases.
-///
-/// After calling this function new canvases will be created for the
-/// subsequent scene. This is useful when tests need predictable canvas
-/// sizes. If the cache is not cleared, then canvases allocated in one test
-/// may be reused in another test.
-void debugForgetFrameScene() {
-  _clipIdCounter = 0;
-  _recycledCanvases.clear();
 }
 
 /// Surfaces that were retained this frame.
@@ -638,6 +627,14 @@ abstract class PersistedSurface implements ui.EngineLayer {
   @protected
   @mustCallSuper
   void build() {
+    if (rootElement != null) {
+      try {
+        throw null;
+      } catch(_, stack) {
+        print('Attempted to build a $runtimeType, but it already has an HTML element ${rootElement.tagName}.');
+        print(stack.toString().split('\n').take(20).join('\n'));
+      }
+    }
     assert(rootElement == null);
     assert(isCreated);
     rootElement = createElement();
@@ -799,8 +796,15 @@ abstract class PersistedSurface implements ui.EngineLayer {
   /// the clip added by this layer (if any).
   ///
   /// The value is update by [recomputeTransformAndClip].
-  ui.Rect get globalClip => _globalClip;
-  ui.Rect _globalClip;
+  ui.Rect _projectedClip;
+
+  /// Bounds of clipping performed by this layer.
+  ui.Rect _localClipBounds;
+  // Cached inverse of transform on this node. Unlike transform, this
+  // Matrix only contains local transform (not chain multiplied since root).
+  Matrix4 _localTransformInverse;
+
+  Matrix4 get localTransformInverse;
 
   /// Recomputes [transform] and [globalClip] fields.
   ///
@@ -812,7 +816,9 @@ abstract class PersistedSurface implements ui.EngineLayer {
   @protected
   void recomputeTransformAndClip() {
     _transform = parent._transform;
-    _globalClip = parent._globalClip;
+    _localClipBounds = null;
+    _localTransformInverse = null;
+    _projectedClip = null;
   }
 
   /// Performs computations before [build], [update], or [retain] are called.
@@ -925,7 +931,9 @@ abstract class PersistedContainerSurface extends PersistedSurface {
   @override
   void recomputeTransformAndClip() {
     _transform = parent._transform;
-    _globalClip = parent._globalClip;
+    _localClipBounds = null;
+    _localTransformInverse = null;
+    _projectedClip = null;
   }
 
   @override

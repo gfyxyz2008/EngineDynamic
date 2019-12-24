@@ -92,7 +92,8 @@ class LayerSceneBuilder implements ui.SceneBuilder {
   @override
   ui.BackdropFilterEngineLayer pushBackdropFilter(ui.ImageFilter filter,
       {ui.EngineLayer oldLayer}) {
-    throw UnimplementedError();
+    pushLayer(BackdropFilterLayer(filter));
+    return null;
   }
 
   @override
@@ -118,7 +119,8 @@ class LayerSceneBuilder implements ui.SceneBuilder {
 
   @override
   ui.ColorFilterEngineLayer pushColorFilter(ui.ColorFilter filter,
-      {ui.EngineLayer oldLayer}) {
+      {ui.ColorFilterEngineLayer oldLayer}) {
+    assert(filter != null);
     throw UnimplementedError();
   }
 
@@ -134,9 +136,9 @@ class LayerSceneBuilder implements ui.SceneBuilder {
   @override
   ui.OpacityEngineLayer pushOpacity(int alpha,
       {ui.EngineLayer oldLayer, ui.Offset offset = ui.Offset.zero}) {
-    // TODO(het): Implement opacity
-    pushOffset(0.0, 0.0);
-    return null;
+    final OpacityLayer layer = OpacityLayer(alpha, offset);
+    pushLayer(layer);
+    return layer;
   }
 
   @override

@@ -34,7 +34,7 @@ class IOSSurfaceSoftware final : public IOSSurface,
   void UpdateStorageSizeIfNecessary() override;
 
   // |IOSSurface|
-  std::unique_ptr<Surface> CreateGPUSurface() override;
+  std::unique_ptr<Surface> CreateGPUSurface(GrContext* gr_context = nullptr) override;
 
   // |GPUSurfaceSoftwareDelegate|
   sk_sp<SkSurface> AcquireBackingStore(const SkISize& size) override;
@@ -46,13 +46,13 @@ class IOSSurfaceSoftware final : public IOSSurface,
   ExternalViewEmbedder* GetExternalViewEmbedder() override;
 
   // |ExternalViewEmbedder|
-  sk_sp<SkSurface> GetRootSurface() override;
+  SkCanvas* GetRootCanvas() override;
 
   // |ExternalViewEmbedder|
   void CancelFrame() override;
 
   // |ExternalViewEmbedder|
-  void BeginFrame(SkISize frame_size, GrContext* context) override;
+  void BeginFrame(SkISize frame_size, GrContext* context, double device_pixel_ratio) override;
 
   // |ExternalViewEmbedder|
   void PrerollCompositeEmbeddedView(int view_id,

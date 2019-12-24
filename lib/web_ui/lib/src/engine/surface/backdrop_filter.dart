@@ -25,6 +25,10 @@ class PersistedBackdropFilter extends PersistedContainerSurface
   Matrix4 _previousTransform;
 
   @override
+  Matrix4 get localTransformInverse =>
+      _localTransformInverse ??= Matrix4.identity();
+
+  @override
   void adoptElements(PersistedBackdropFilter oldSurface) {
     super.adoptElements(oldSurface);
     _childContainer = oldSurface._childContainer;
@@ -64,10 +68,8 @@ class PersistedBackdropFilter extends PersistedContainerSurface
       _invertedTransform = Matrix4.inverted(_transform);
       _previousTransform = _transform;
     }
-    final ui.Rect rect = localClipRectToGlobalClip(
-        localClip: ui.Rect.fromLTRB(
-            0, 0, ui.window.physicalSize.width, ui.window.physicalSize.height),
-        transform: _invertedTransform);
+    final ui.Rect rect = transformLTRB(_invertedTransform, 0, 0,
+        ui.window.physicalSize.width, ui.window.physicalSize.height);
     final html.CssStyleDeclaration filterElementStyle = _filterElement.style;
     filterElementStyle
       ..position = 'absolute'
@@ -83,11 +85,12 @@ class PersistedBackdropFilter extends PersistedContainerSurface
         ..backgroundColor = '#000'
         ..opacity = '0.2';
     } else {
+      final EngineImageFilter engineFilter = filter;
       // CSS uses pixel radius for blur. Flutter & SVG use sigma parameters. For
       // Gaussian blur with standard deviation (normal distribution),
       // the blur will fall within 2 * sigma pixels.
       domRenderer.setElementStyle(_filterElement, 'backdrop-filter',
-          'blur(${math.max(filter.sigmaX, filter.sigmaY) * 2}px)');
+          'blur(${math.max(engineFilter.sigmaX, engineFilter.sigmaY) * 2}px)');
     }
   }
 

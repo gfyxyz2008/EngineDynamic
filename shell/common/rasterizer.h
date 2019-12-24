@@ -16,6 +16,7 @@
 #include "flutter/fml/gpu_thread_merger.h"
 #include "flutter/fml/memory/weak_ptr.h"
 #include "flutter/fml/synchronization/waitable_event.h"
+#include "flutter/lib/ui/snapshot_delegate.h"
 #include "flutter/shell/common/pipeline.h"
 #include "flutter/shell/common/surface.h"
 
@@ -34,7 +35,7 @@ namespace flutter {
 /// and the on-screen render surface. The compositor context has all the GPU
 /// state necessary to render frames to the render surface.
 ///
-class Rasterizer final {
+class Rasterizer final : public SnapshotDelegate {
  public:
   //----------------------------------------------------------------------------
   /// @brief      Used to forward events from the rasterizer to interested
@@ -63,11 +64,17 @@ class Rasterizer final {
     ///                           the frame workload.
     ///
     virtual void OnFrameRasterized(const FrameTiming& frame_timing) = 0;
+
+    /// Time limit for a smooth frame. See `Engine::GetDisplayRefreshRate`.
+    virtual fml::Milliseconds GetFrameBudget() = 0;
   };
 
   // TODO(dnfield): remove once embedders have caught up.
   class DummyDelegate : public Delegate {
     void OnFrameRasterized(const FrameTiming&) override {}
+    fml::Milliseconds GetFrameBudget() override {
+      return fml::kDefaultFrameBudget;
+    }
   };
 
   //----------------------------------------------------------------------------
@@ -167,6 +174,8 @@ class Rasterizer final {
   /// @return     The weak pointer to the rasterizer.
   ///
   fml::WeakPtr<Rasterizer> GetWeakPtr() const;
+
+  fml::WeakPtr<SnapshotDelegate> GetSnapshotDelegate() const;
 
   //----------------------------------------------------------------------------
   /// @brief      Sometimes, it may be necessary to render the same frame again
@@ -345,7 +354,7 @@ class Rasterizer final {
   /// @param[in]  callback  The callback to execute when the next layer tree is
   ///                       rendered on-screen.
   ///
-  void SetNextFrameCallback(fml::closure callback);
+  void SetNextFrameCallback(const fml::closure& callback);
 
   //----------------------------------------------------------------------------
   /// @brief      Returns a pointer to the compositor context used by this
@@ -412,6 +421,10 @@ class Rasterizer final {
   std::optional<size_t> max_cache_bytes_;
   fml::WeakPtrFactory<Rasterizer> weak_factory_;
   fml::RefPtr<fml::GpuThreadMerger> gpu_thread_merger_;
+
+  // |SnapshotDelegate|
+  sk_sp<SkImage> MakeRasterSnapshot(sk_sp<SkPicture> picture,
+                                    SkISize picture_size) override;
 
   RasterStatus DoDraw(std::unique_ptr<flutter::LayerTree> layer_tree);
 

@@ -28,15 +28,17 @@ class IOSSurfaceGL final : public IOSSurface,
 
   ~IOSSurfaceGL() override;
 
+  // |IOSSurface|
   bool IsValid() const override;
 
+  // |IOSSurface|
   bool ResourceContextMakeCurrent() override;
 
+  // |IOSSurface|
   void UpdateStorageSizeIfNecessary() override;
 
-  std::unique_ptr<Surface> CreateGPUSurface() override;
-
-  std::unique_ptr<Surface> CreateSecondaryGPUSurface(GrContext* gr_context);
+  // |IOSSurface|
+  std::unique_ptr<Surface> CreateGPUSurface(GrContext* gr_context = nullptr) override;
 
   bool GLContextMakeCurrent() override;
 
@@ -52,13 +54,13 @@ class IOSSurfaceGL final : public IOSSurface,
   ExternalViewEmbedder* GetExternalViewEmbedder() override;
 
   // |ExternalViewEmbedder|
-  sk_sp<SkSurface> GetRootSurface() override;
+  SkCanvas* GetRootCanvas() override;
 
   // |ExternalViewEmbedder|
   void CancelFrame() override;
 
   // |ExternalViewEmbedder|
-  void BeginFrame(SkISize frame_size, GrContext* context) override;
+  void BeginFrame(SkISize frame_size, GrContext* context, double device_pixel_ratio) override;
 
   // |ExternalViewEmbedder|
   void PrerollCompositeEmbeddedView(int view_id,

@@ -24,7 +24,7 @@ class MessageLoop {
 
   void Terminate();
 
-  void AddTaskObserver(intptr_t key, fml::closure callback);
+  void AddTaskObserver(intptr_t key, const fml::closure& callback);
 
   void RemoveTaskObserver(intptr_t key);
 
@@ -33,8 +33,6 @@ class MessageLoop {
   // Exposed for the embedder shell which allows clients to poll for events
   // instead of dedicating a thread to the message loop.
   void RunExpiredTasksNow();
-
-  void SwapTaskQueues(MessageLoop* other);
 
   static void EnsureInitializedForCurrentThread();
 

@@ -76,10 +76,13 @@ source_set("ui") {
     "semantics/semantics_update.h",
     "semantics/semantics_update_builder.cc",
     "semantics/semantics_update_builder.h",
+    "snapshot_delegate.h",
     "text/asset_manager_font_provider.cc",
     "text/asset_manager_font_provider.h",
     "text/font_collection.cc",
     "text/font_collection.h",
+    "text/line_metrics.cc",
+    "text/line_metrics.h",
     "text/paragraph.cc",
     "text/paragraph.h",
     "text/paragraph_builder.cc",
@@ -98,6 +101,8 @@ source_set("ui") {
     "window/pointer_data.h",
     "window/pointer_data_packet.cc",
     "window/pointer_data_packet.h",
+    "window/pointer_data_packet_converter.cc",
+    "window/pointer_data_packet_converter.h",
     "window/viewport_metrics.cc",
     "window/viewport_metrics.h",
     "window/window.cc",
@@ -158,6 +163,7 @@ if (current_toolchain == host_toolchain) {
 
     sources = [
       "painting/image_decoder_unittests.cc",
+      "window/pointer_data_packet_converter_unittests.cc",
     ]
 
     deps = [

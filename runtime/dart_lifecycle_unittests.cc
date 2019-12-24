@@ -53,10 +53,11 @@ static std::shared_ptr<DartIsolate> CreateAndRunRootIsolate(
   auto isolate_weak = DartIsolate::CreateRootIsolate(
       vm.GetSettings(),                   // settings
       vm.GetIsolateSnapshot(),            // isolate_snapshot
-      vm.GetSharedSnapshot(),             // shared_snapshot
       runners,                            // task_runners
       {},                                 // window
+      {},                                 // snapshot_delegate
       {},                                 // io_manager
+      {},                                 // unref_queue
       {},                                 // image_decoder
       "main.dart",                        // advisory_script_uri
       entrypoint.c_str(),                 // advisory_script_entrypoint
@@ -113,6 +114,8 @@ TEST_F(DartLifecycleTest, DISABLED_ShuttingDownTheVMShutsDownAllIsolates) {
   // Make sure the service protocol launches
   settings.enable_observatory = true;
 
+  auto thread_task_runner = CreateNewThread();
+
   for (size_t i = 0; i < 3; i++) {
     ASSERT_FALSE(DartVMRef::IsInstanceRunning());
 
@@ -127,7 +130,6 @@ TEST_F(DartLifecycleTest, DISABLED_ShuttingDownTheVMShutsDownAllIsolates) {
 
     fml::CountDownLatch latch(isolate_count);
     auto vm_data = vm_ref.GetVMData();
-    auto thread_task_runner = GetThreadTaskRunner();
     for (size_t i = 0; i < isolate_count; ++i) {
       thread_task_runner->PostTask(
           [vm_data, &settings, &latch, thread_task_runner]() {

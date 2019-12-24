@@ -21,7 +21,7 @@ void main() {
 
   test('paint set to black', () {
     const Color c = Color(0x00000000);
-    final Paint p = new Paint();
+    final Paint p = Paint();
     p.color = c;
     expect(c.toString(), equals('Color(0x00000000)'));
   });
@@ -29,7 +29,7 @@ void main() {
   test('color created with out of bounds value', () {
     try {
       const Color c = Color(0x100 << 24);
-      final Paint p = new Paint();
+      final Paint p = Paint();
       p.color = c;
     } catch (e) {
       expect(e != null, equals(true));
@@ -39,7 +39,7 @@ void main() {
   test('color created with wildly out of bounds value', () {
     try {
       const Color c = Color(1 << 1000000);
-      final Paint p = new Paint();
+      final Paint p = Paint();
       p.color = c;
     } catch (e) {
       expect(e != null, equals(true));
@@ -137,4 +137,27 @@ void main() {
     // 0.0722 * ((0.18823529411 + 0.055) / 1.055) ^ 2.4
     expect(brightRed.computeLuminance(), equals(0.24601329637099723));
   });
+
+  // Regression test for https://github.com/flutter/flutter/issues/41257
+  // CupertinoDynamicColor was overriding base class and calling super(0).
+  test('subclass of Color can override value', () {
+    final DynamicColorClass color = DynamicColorClass(0xF0E0D0C0);
+    expect(color.value, 0xF0E0D0C0);
+    // Call base class member, make sure it uses overridden value.
+    expect(color.red, 0xE0);
+  });
+
+  test('Paint converts Color subclasses to plain Color', () {
+    final DynamicColorClass color = DynamicColorClass(0xF0E0D0C0);
+    final Paint paint = Paint()..color = color;
+    expect(paint.color.runtimeType, Color);
+  });
+}
+
+class DynamicColorClass extends Color {
+  const DynamicColorClass(int newValue) : _newValue = newValue, super(0);
+
+  final int _newValue;
+
+  int get value => _newValue;
 }

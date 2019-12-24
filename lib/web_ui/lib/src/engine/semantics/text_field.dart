@@ -20,8 +20,8 @@ class TextField extends RoleManager {
             ? html.TextAreaElement()
             : html.InputElement();
     persistentTextEditingElement = PersistentTextEditingElement(
+      textEditing,
       editableDomElement,
-      onDomElementSwap: _setupDomElement,
     );
     _setupDomElement();
   }
@@ -37,7 +37,6 @@ class TextField extends RoleManager {
     // and autocorrect suggestion. To disable that, we have to do the following:
     _textFieldElement
       ..spellcheck = false
-      ..setAttribute('spellcheck', 'false')
       ..setAttribute('autocorrect', 'off')
       ..setAttribute('autocomplete', 'off')
       ..setAttribute('data-semantics-role', 'text-field');
@@ -61,6 +60,8 @@ class TextField extends RoleManager {
 
     switch (browserEngine) {
       case BrowserEngine.blink:
+      case BrowserEngine.edge:
+      case BrowserEngine.firefox:
       case BrowserEngine.unknown:
         _initializeForBlink();
         break;

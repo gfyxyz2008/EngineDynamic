@@ -20,16 +20,30 @@ import android.os.Build;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.annotation.VisibleForTesting;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 
 import io.flutter.Log;
+import io.flutter.embedding.android.FlutterActivityLaunchConfigs.BackgroundMode;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.embedding.engine.FlutterShellArgs;
 import io.flutter.embedding.engine.plugins.activity.ActivityControlSurface;
 import io.flutter.plugin.platform.PlatformPlugin;
 import io.flutter.view.FlutterMain;
+
+import static io.flutter.embedding.android.FlutterActivityLaunchConfigs.DART_ENTRYPOINT_META_DATA_KEY;
+import static io.flutter.embedding.android.FlutterActivityLaunchConfigs.DEFAULT_BACKGROUND_MODE;
+import static io.flutter.embedding.android.FlutterActivityLaunchConfigs.DEFAULT_DART_ENTRYPOINT;
+import static io.flutter.embedding.android.FlutterActivityLaunchConfigs.DEFAULT_INITIAL_ROUTE;
+import static io.flutter.embedding.android.FlutterActivityLaunchConfigs.EXTRA_BACKGROUND_MODE;
+import static io.flutter.embedding.android.FlutterActivityLaunchConfigs.EXTRA_CACHED_ENGINE_ID;
+import static io.flutter.embedding.android.FlutterActivityLaunchConfigs.EXTRA_DESTROY_ENGINE_WITH_ACTIVITY;
+import static io.flutter.embedding.android.FlutterActivityLaunchConfigs.EXTRA_INITIAL_ROUTE;
+import static io.flutter.embedding.android.FlutterActivityLaunchConfigs.INITIAL_ROUTE_META_DATA_KEY;
+import static io.flutter.embedding.android.FlutterActivityLaunchConfigs.NORMAL_THEME_META_DATA_KEY;
+import static io.flutter.embedding.android.FlutterActivityLaunchConfigs.SPLASH_SCREEN_META_DATA_KEY;
 
 /**
  * {@code Activity} which displays a fullscreen Flutter UI.
@@ -39,20 +53,16 @@ import io.flutter.view.FlutterMain;
  * <p>
  * <strong>Dart entrypoint, initial route, and app bundle path</strong>
  * <p>
- * The Dart entrypoint executed within this {@code Activity} is "main()" by default. The entrypoint
- * may be specified explicitly by passing the name of the entrypoint method as a {@code String} in
- * {@link #EXTRA_DART_ENTRYPOINT}, e.g., "myEntrypoint".
+ * The Dart entrypoint executed within this {@code Activity} is "main()" by default. To change the
+ * entrypoint that a {@code FlutterActivity} executes, subclass {@code FlutterActivity} and
+ * override {@link #getDartEntrypointFunctionName()}.
  * <p>
  * The Flutter route that is initially loaded within this {@code Activity} is "/". The initial
  * route may be specified explicitly by passing the name of the route as a {@code String} in
- * {@link #EXTRA_INITIAL_ROUTE}, e.g., "my/deep/link".
+ * {@link FlutterActivityLaunchConfigs#EXTRA_INITIAL_ROUTE}, e.g., "my/deep/link".
  * <p>
- * The Dart entrypoint and initial route can each be controlled using a {@link NewEngineIntentBuilder}
- * via the following methods:
- * <ul>
- *   <li>{@link NewEngineIntentBuilder#dartEntrypoint}</li>
- *   <li>{@link NewEngineIntentBuilder#initialRoute}</li>
- * </ul>
+ * The initial route can each be controlled using a {@link NewEngineIntentBuilder} via
+ * {@link NewEngineIntentBuilder#initialRoute}.
  * <p>
  * The app bundle path, Dart entrypoint, and initial route can also be controlled in a subclass of
  * {@code FlutterActivity} by overriding their respective methods:
@@ -62,12 +72,24 @@ import io.flutter.view.FlutterMain;
  *   <li>{@link #getInitialRoute()}</li>
  * </ul>
  * <p>
+ * The Dart entrypoint and app bundle path are not supported as {@code Intent} parameters due to
+ * security concerns. If such configurations were exposed via {@code Intent}, then a
+ * {@code FlutterActivity} that is {@code exported} from your Android app would allow other apps to
+ * invoke arbitrary Dart entrypoints in your app by specifying different Dart entrypoints for your
+ * {@code FlutterActivity}. Therefore, these configurations are not available via {@code Intent}.
+ * <p>
+ * <strong>Using a cached FlutterEngine</strong>
+ * <p>
  * {@code FlutterActivity} can be used with a cached {@link FlutterEngine} instead of creating a new
  * one. Use {@link #withCachedEngine(String)} to build a {@code FlutterActivity} {@code Intent} that
- * is configured to use an existing, cached {@link FlutterEngine}. {@link FlutterEngineCache} is the
- * cache that is used to obtain a given cached {@link FlutterEngine}. An
- * {@code IllegalStateException} will be thrown if a cached engine is requested but does not exist
- * in the cache.
+ * is configured to use an existing, cached {@link FlutterEngine}.
+ * {@link io.flutter.embedding.engine.FlutterEngineCache} is the cache that is used to obtain a
+ * given cached {@link FlutterEngine}. An {@code IllegalStateException} will be thrown if a cached
+ * engine is requested but does not exist in the cache.
+ * <p>
+ * When using a cached {@link FlutterEngine}, that {@link FlutterEngine} should already be executing
+ * Dart code, which means that the Dart entrypoint and initial route have already been defined.
+ * Therefore, {@link CachedEngineIntentBuilder} does not offer configuration of these properties.
  * <p>
  * It is generally recommended to use a cached {@link FlutterEngine} to avoid a momentary delay
  * when initializing a new {@link FlutterEngine}. The two exceptions to using a cached
@@ -91,6 +113,8 @@ import io.flutter.view.FlutterMain;
  *   // Cache the pre-warmed FlutterEngine in the FlutterEngineCache.
  *   FlutterEngineCache.getInstance().put("my_engine", flutterEngine);
  * }
+ * <p>
+ * <strong>Alternatives to FlutterActivity</strong>
  * <p>
  * If Flutter is needed in a location that cannot use an {@code Activity}, consider using
  * a {@link FlutterFragment}. Using a {@link FlutterFragment} requires forwarding some calls from
@@ -164,29 +188,19 @@ import io.flutter.view.FlutterMain;
  *     android:value="true"
  *     />
  * }
+ * <p>
+ * <strong>Alternative Activity</strong>
+ * {@link FlutterFragmentActivity} is also available, which is similar to {@code FlutterActivity}
+ * but it extends {@code FragmentActivity}. You should use {@code FlutterActivity}, if possible,
+ * but if you need a {@code FragmentActivity} then you should use {@link FlutterFragmentActivity}.
  */
+// A number of methods in this class have the same implementation as FlutterFragmentActivity. These
+// methods are duplicated for readability purposes. Be sure to replicate any change in this class in
+// FlutterFragmentActivity, too.
 public class FlutterActivity extends Activity
     implements FlutterActivityAndFragmentDelegate.Host,
     LifecycleOwner {
   private static final String TAG = "FlutterActivity";
-
-  // Meta-data arguments, processed from manifest XML.
-  protected static final String DART_ENTRYPOINT_META_DATA_KEY = "io.flutter.Entrypoint";
-  protected static final String INITIAL_ROUTE_META_DATA_KEY = "io.flutter.InitialRoute";
-  protected static final String SPLASH_SCREEN_META_DATA_KEY = "io.flutter.embedding.android.SplashScreenDrawable";
-  protected static final String NORMAL_THEME_META_DATA_KEY = "io.flutter.embedding.android.NormalTheme";
-
-  // Intent extra arguments.
-  protected static final String EXTRA_DART_ENTRYPOINT = "dart_entrypoint";
-  protected static final String EXTRA_INITIAL_ROUTE = "initial_route";
-  protected static final String EXTRA_BACKGROUND_MODE = "background_mode";
-  protected static final String EXTRA_CACHED_ENGINE_ID = "cached_engine_id";
-  protected static final String EXTRA_DESTROY_ENGINE_WITH_ACTIVITY = "destroy_engine_with_activity";
-
-  // Default configuration.
-  protected static final String DEFAULT_DART_ENTRYPOINT = "main";
-  protected static final String DEFAULT_INITIAL_ROUTE = "/";
-  protected static final String DEFAULT_BACKGROUND_MODE = BackgroundMode.opaque.name();
 
   /**
    * Creates an {@link Intent} that launches a {@code FlutterActivity}, which executes
@@ -213,7 +227,6 @@ public class FlutterActivity extends Activity
    */
   public static class NewEngineIntentBuilder {
     private final Class<? extends FlutterActivity> activityClass;
-    private String dartEntrypoint = DEFAULT_DART_ENTRYPOINT;
     private String initialRoute = DEFAULT_INITIAL_ROUTE;
     private String backgroundMode = DEFAULT_BACKGROUND_MODE;
 
@@ -232,15 +245,6 @@ public class FlutterActivity extends Activity
      */
     protected NewEngineIntentBuilder(@NonNull Class<? extends FlutterActivity> activityClass) {
       this.activityClass = activityClass;
-    }
-
-    /**
-     * The name of the initial Dart method to invoke, defaults to "main".
-     */
-    @NonNull
-    public NewEngineIntentBuilder dartEntrypoint(@NonNull String dartEntrypoint) {
-      this.dartEntrypoint = dartEntrypoint;
-      return this;
     }
 
     /**
@@ -282,7 +286,6 @@ public class FlutterActivity extends Activity
     @NonNull
     public Intent build(@NonNull Context context) {
       return new Intent(context, activityClass)
-          .putExtra(EXTRA_DART_ENTRYPOINT, dartEntrypoint)
           .putExtra(EXTRA_INITIAL_ROUTE, initialRoute)
           .putExtra(EXTRA_BACKGROUND_MODE, backgroundMode)
           .putExtra(EXTRA_DESTROY_ENGINE_WITH_ACTIVITY, true);
@@ -292,7 +295,7 @@ public class FlutterActivity extends Activity
   /**
    * Creates a {@link CachedEngineIntentBuilder}, which can be used to configure an {@link Intent}
    * to launch a {@code FlutterActivity} that internally uses an existing {@link FlutterEngine} that
-   * is cached in {@link FlutterEngineCache}.
+   * is cached in {@link io.flutter.embedding.engine.FlutterEngineCache}.
    */
   public static CachedEngineIntentBuilder withCachedEngine(@NonNull String cachedEngineId) {
     return new CachedEngineIntentBuilder(FlutterActivity.class, cachedEngineId);
@@ -300,7 +303,7 @@ public class FlutterActivity extends Activity
 
   /**
    * Builder to create an {@code Intent} that launches a {@code FlutterActivity} with an existing
-   * {@link FlutterEngine} that is cached in {@link FlutterEngineCache}.
+   * {@link FlutterEngine} that is cached in {@link io.flutter.embedding.engine.FlutterEngineCache}.
    */
   public static class CachedEngineIntentBuilder {
     private final Class<? extends FlutterActivity> activityClass;
@@ -378,13 +381,29 @@ public class FlutterActivity extends Activity
   // Delegate that runs all lifecycle and OS hook logic that is common between
   // FlutterActivity and FlutterFragment. See the FlutterActivityAndFragmentDelegate
   // implementation for details about why it exists.
-  private FlutterActivityAndFragmentDelegate delegate;
+  @VisibleForTesting
+  protected FlutterActivityAndFragmentDelegate delegate;
 
   @NonNull
   private LifecycleRegistry lifecycle;
 
   public FlutterActivity() {
     lifecycle = new LifecycleRegistry(this);
+  }
+
+  /**
+   * This method exists so that JVM tests can ensure that a delegate exists without
+   * putting this Activity through any lifecycle events, because JVM tests cannot handle
+   * executing any lifecycle methods, at the time of writing this.
+   * <p>
+   * The testing infrastructure should be upgraded to make FlutterActivity tests easy to
+   * write while exercising real lifecycle methods. At such a time, this method should be
+   * removed.
+   */
+  // TODO(mattcarroll): remove this when tests allow for it (https://github.com/flutter/flutter/issues/43798)
+  @VisibleForTesting
+  /* package */ void setDelegate(@NonNull FlutterActivityAndFragmentDelegate delegate) {
+    this.delegate = delegate;
   }
 
   @Override
@@ -397,6 +416,7 @@ public class FlutterActivity extends Activity
 
     delegate = new FlutterActivityAndFragmentDelegate(this);
     delegate.onAttach(this);
+    delegate.onActivityCreated(savedInstanceState);
 
     configureWindowForTransparency();
     setContentView(createFlutterView());
@@ -462,8 +482,8 @@ public class FlutterActivity extends Activity
    * Returns a {@link Drawable} to be used as a splash screen as requested by meta-data in the
    * {@code AndroidManifest.xml} file, or null if no such splash screen is requested.
    * <p>
-   * See {@link #SPLASH_SCREEN_META_DATA_KEY} for the meta-data key to be used in a
-   * manifest file.
+   * See {@link FlutterActivityLaunchConfigs#SPLASH_SCREEN_META_DATA_KEY} for the meta-data key to
+   * be used in a manifest file.
    */
   @Nullable
   @SuppressWarnings("deprecation")
@@ -471,11 +491,11 @@ public class FlutterActivity extends Activity
     try {
       ActivityInfo activityInfo = getPackageManager().getActivityInfo(
           getComponentName(),
-          PackageManager.GET_META_DATA|PackageManager.GET_ACTIVITIES
+          PackageManager.GET_META_DATA
       );
       Bundle metadata = activityInfo.metaData;
-      Integer splashScreenId = metadata != null ? metadata.getInt(SPLASH_SCREEN_META_DATA_KEY) : null;
-      return splashScreenId != null
+      int splashScreenId = metadata != null ? metadata.getInt(SPLASH_SCREEN_META_DATA_KEY) : 0;
+      return splashScreenId != 0
           ? Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP
             ? getResources().getDrawable(splashScreenId, getTheme())
             : getResources().getDrawable(splashScreenId)
@@ -553,6 +573,12 @@ public class FlutterActivity extends Activity
     super.onStop();
     delegate.onStop();
     lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_STOP);
+  }
+
+  @Override
+  protected void onSaveInstanceState(Bundle outState) {
+    super.onSaveInstanceState(outState);
+    delegate.onSaveInstanceState(outState);
   }
 
   @Override
@@ -665,36 +691,32 @@ public class FlutterActivity extends Activity
    */
   @Override
   public boolean shouldDestroyEngineWithHost() {
-    return getIntent().getBooleanExtra(EXTRA_DESTROY_ENGINE_WITH_ACTIVITY, false);
+    boolean explicitDestructionRequested = getIntent().getBooleanExtra(EXTRA_DESTROY_ENGINE_WITH_ACTIVITY, false);
+    if (getCachedEngineId() != null || delegate.isFlutterEngineFromHost()) {
+      // Only destroy a cached engine if explicitly requested by app developer.
+      return explicitDestructionRequested;
+    } else {
+      // If this Activity created the FlutterEngine, destroy it by default unless
+      // explicitly requested not to.
+      return getIntent().getBooleanExtra(EXTRA_DESTROY_ENGINE_WITH_ACTIVITY, true);
+    }
   }
 
   /**
    * The Dart entrypoint that will be executed as soon as the Dart snapshot is loaded.
    * <p>
-   * This preference can be controlled with 2 methods:
-   * <ol>
-   *   <li>Pass a {@code String} as {@link #EXTRA_DART_ENTRYPOINT} with the launching {@code Intent}, or</li>
-   *   <li>Set a {@code <meta-data>} called {@link #DART_ENTRYPOINT_META_DATA_KEY} for this
-   *       {@code Activity} in the Android manifest.</li>
-   * </ol>
-   * If both preferences are set, the {@code Intent} preference takes priority.
-   * <p>
-   * The reason that a {@code <meta-data>} preference is supported is because this {@code Activity}
-   * might be the very first {@code Activity} launched, which means the developer won't have
-   * control over the incoming {@code Intent}.
+   * This preference can be controlled by setting a {@code <meta-data>} called
+   * {@link FlutterActivityLaunchConfigs#DART_ENTRYPOINT_META_DATA_KEY} within the Android manifest
+   * definition for this {@code FlutterActivity}.
    * <p>
    * Subclasses may override this method to directly control the Dart entrypoint.
    */
   @NonNull
   public String getDartEntrypointFunctionName() {
-    if (getIntent().hasExtra(EXTRA_DART_ENTRYPOINT)) {
-      return getIntent().getStringExtra(EXTRA_DART_ENTRYPOINT);
-    }
-
     try {
       ActivityInfo activityInfo = getPackageManager().getActivityInfo(
           getComponentName(),
-          PackageManager.GET_META_DATA|PackageManager.GET_ACTIVITIES
+          PackageManager.GET_META_DATA
       );
       Bundle metadata = activityInfo.metaData;
       String desiredDartEntrypoint = metadata != null ? metadata.getString(DART_ENTRYPOINT_META_DATA_KEY) : null;
@@ -709,9 +731,11 @@ public class FlutterActivity extends Activity
    * <p>
    * This preference can be controlled with 2 methods:
    * <ol>
-   *   <li>Pass a boolean as {@link #EXTRA_INITIAL_ROUTE} with the launching {@code Intent}, or</li>
-   *   <li>Set a {@code <meta-data>} called {@link #INITIAL_ROUTE_META_DATA_KEY} for this
-   *    {@code Activity} in the Android manifest.</li>
+   *   <li>Pass a boolean as {@link FlutterActivityLaunchConfigs#EXTRA_INITIAL_ROUTE} with the
+   *     launching {@code Intent}, or</li>
+   *   <li>Set a {@code <meta-data>} called
+   *     {@link FlutterActivityLaunchConfigs#INITIAL_ROUTE_META_DATA_KEY} for this {@code Activity}
+   *     in the Android manifest.</li>
    * </ol>
    * If both preferences are set, the {@code Intent} preference takes priority.
    * <p>
@@ -730,7 +754,7 @@ public class FlutterActivity extends Activity
     try {
       ActivityInfo activityInfo = getPackageManager().getActivityInfo(
           getComponentName(),
-          PackageManager.GET_META_DATA|PackageManager.GET_ACTIVITIES
+          PackageManager.GET_META_DATA
       );
       Bundle metadata = activityInfo.metaData;
       String desiredInitialRoute = metadata != null ? metadata.getString(INITIAL_ROUTE_META_DATA_KEY) : null;
@@ -860,6 +884,17 @@ public class FlutterActivity extends Activity
   }
 
   /**
+   * Hook for the host to cleanup references that were established in
+   * {@link #configureFlutterEngine(FlutterEngine)} before the host is destroyed or detached.
+   * <p>
+   * This method is called in {@link #onDestroy()}.
+   */
+  @Override
+  public void cleanUpFlutterEngine(@NonNull FlutterEngine flutterEngine) {
+    // No-op. Hook for subclasses.
+  }
+
+  /**
    * Hook for subclasses to control whether or not the {@link FlutterFragment} within this
    * {@code Activity} automatically attaches its {@link FlutterEngine} to this {@code Activity}.
    * <p>
@@ -900,15 +935,17 @@ public class FlutterActivity extends Activity
   }
 
   @Override
-  public void onFirstFrameRendered() {}
-
-  /**
-   * The mode of the background of a {@code FlutterActivity}, either opaque or transparent.
-   */
-  public enum BackgroundMode {
-    /** Indicates a FlutterActivity with an opaque background. This is the default. */
-    opaque,
-    /** Indicates a FlutterActivity with a transparent background. */
-    transparent
+  public void onFlutterUiDisplayed() {
+    // Notifies Android that we're fully drawn so that performance metrics can be collected by
+    // Flutter performance tests.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+      reportFullyDrawn();
+    }
   }
+
+  @Override
+  public void onFlutterUiNoLongerDisplayed() {
+    // no-op
+  }
+
 }
