@@ -18,6 +18,11 @@ FLUTTER_EXPORT
 @interface FlutterDartProject : NSObject
 
 /**
+ * Initializes with a specific set of Flutter Assets.
+ */
+- (instancetype)initWithFlutterAssetsURL:(NSURL*)flutterAssetsURL NS_DESIGNATED_INITIALIZER;
+
+/**
  * Initializes a Flutter Dart project from a bundle.
  */
 - (instancetype)initWithPrecompiledDartBundle:(nullable NSBundle*)bundle NS_DESIGNATED_INITIALIZER;
